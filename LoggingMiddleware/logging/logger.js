@@ -1,4 +1,3 @@
-// logger.js
 import axios from "axios";
 
 const LOG_SERVER_URL = "http://20.244.56.144/evaluation-service/logs";
