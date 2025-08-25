@@ -1,5 +1,5 @@
 import express from "express";
-import { log } from "../LoggingMiddleware/logging/logger.js"; // Adjust import as needed
+import { log } from "../LoggingMiddleware/logger.js";
 
 const router = express.Router();
 const urlMap = new Map();
@@ -13,13 +13,13 @@ function generateShortcode(length = 6) {
 	return result;
 }
 
-router.post("/shorten", (req, res) => {
-	const { url, shortcode, validity } = req.body;
-	if (!url) {
-		log("backend", "error", "controller", "Missing URL in request", {
+router.post("/", (req, res) => {
+	const { url, validity, shortcode } = req.body;
+	if (!url || typeof url !== "string" || !/^https?:\/\//.test(url)) {
+		log("backend", "error", "controller", "Invalid or missing URL", {
 			body: req.body,
 		});
-		return res.status(400).json({ error: "Missing URL" });
+		return res.status(400).json({ error: "Invalid or missing URL" });
 	}
 	let code = shortcode || generateShortcode();
 	if (urlMap.has(code)) {
@@ -28,32 +28,62 @@ router.post("/shorten", (req, res) => {
 		});
 		return res.status(409).json({ error: "Shortcode already exists" });
 	}
+	// Expiry in minutes, default 30
 	let expiry = validity ? parseInt(validity) : 30;
-	urlMap.set(code, { url, expiry: Date.now() + expiry * 60000 });
+	const expiryDate = new Date(Date.now() + expiry * 60000).toISOString();
+	urlMap.set(code, {
+		url,
+		creationDate: new Date().toISOString(),
+		expiry: expiryDate,
+		clicks: [],
+	});
 	log("backend", "info", "repository", "Short URL created", {
 		shortcode: code,
 		url,
-		expiry,
+		expiry: expiryDate,
 	});
-	return res
-		.status(201)
-		.json({ shortUrl: `${req.protocol}://${req.get("host")}/${code}`, expiry });
+	return res.status(201).json({
+		shortLink: `${req.protocol}://${req.get("host")}/shorturls/${code}`,
+		expiry: expiryDate,
+	});
 });
 
+// Redirect handler and click statistics
 router.get("/:shortcode", (req, res) => {
 	const code = req.params.shortcode;
 	const entry = urlMap.get(code);
 	if (!entry) {
-		log("backend", "error", "handler", "Non-existent shortcode access", {
+		log("backend", "error", "handler", "Shortcode not found", {
 			shortcode: code,
 		});
 		return res.status(404).json({ error: "Shortcode not found" });
 	}
-	if (Date.now() > entry.expiry) {
+	// Click statistics: If "stats" query present, show stats; else, redirect
+	if (req.query.stats !== undefined) {
+		// Provide usage statistics
+		return res.json({
+			url: entry.url,
+			creationDate: entry.creationDate,
+			expiry: entry.expiry,
+			clickCount: entry.clicks.length,
+			clicks: entry.clicks,
+		});
+	}
+	// Expiry check
+	if (new Date() > new Date(entry.expiry)) {
 		log("backend", "warn", "handler", "Shortcode expired", { shortcode: code });
 		urlMap.delete(code);
 		return res.status(410).json({ error: "Shortcode expired" });
 	}
+	// Collect click statistics
+	const clickInfo = {
+		timestamp: new Date().toISOString(),
+		referrer: req.get("Referer") || "direct",
+		ip: req.ip,
+		// For geo, add placeholder (would normally use geo IP service)
+		geo: "unknown",
+	};
+	entry.clicks.push(clickInfo);
 	log("backend", "info", "handler", "Redirecting to original URL", {
 		shortcode: code,
 		url: entry.url,
