@@ -1,7 +1,8 @@
 import { log } from "./logger.js";
 
 export default function loggingMiddleware(req, res, next) {
-	const pkg = req.route ? req.route.path : "unknown";
+	const pkg = "middleware";
+
 	log("backend", "info", pkg, `Incoming request: ${req.method} ${req.url}`, {
 		body: req.body,
 		ip: req.ip,
@@ -14,5 +15,6 @@ export default function loggingMiddleware(req, res, next) {
 			status: res.statusCode,
 		});
 	});
+
 	next();
 }
