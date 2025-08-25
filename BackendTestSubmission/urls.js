@@ -1,5 +1,5 @@
 import express from "express";
-import { log } from "../LoggingMiddleware/logger.js";
+import { log } from "../LoggingMiddleware/logging/logger.js";
 
 const router = express.Router();
 const urlMap = new Map();
